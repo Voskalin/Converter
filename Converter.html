@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Advanced Document Converter — Fixed</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--muted:#9aa6b2;--accent:#4f46e5}
+    *{box-sizing:border-box}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial;min-height:100vh;margin:0;background:linear-gradient(180deg,#071020,#0b1222);color:#e6eef6;display:flex;align-items:center;justify-content:center;padding:28px}
+    .app{width:100%;max-width:980px;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08));border-radius:12px;padding:20px;box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+    header{display:flex;align-items:center;gap:12px}
+    h1{font-size:20px;margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif}
+    p.lead{margin:6px 0 0;color:var(--muted);font-size:13px;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif}
+    .grid{display:grid;grid-template-columns:360px 1fr;gap:18px;margin-top:16px}
+    .drop{background:rgba(255,255,255,0.02);border:2px dashed rgba(255,255,255,0.05);padding:18px;border-radius:10px;min-height:260px;display:flex;flex-direction:column;gap:12px;cursor:pointer}
+    .drop.dragover{background:linear-gradient(90deg,rgba(79,70,229,0.12),rgba(59,130,246,0.06));border-color:rgba(79,70,229,0.45)}
+    .drop .hint{color:var(--muted);font-size:14px}
+    .files{overflow:auto;max-height:200px}
+    .file-item{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:8px;background:rgba(0,0,0,0.12)}
+    .file-item small{color:var(--muted)}
+    .controls{display:flex;gap:8px;margin-top:8px}
+    button{background:var(--accent);border:none;color:white;padding:10px 12px;border-radius:8px;cursor:pointer}
+    button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06)}
+    .panel{background:rgba(255,255,255,0.02);padding:14px;border-radius:10px;height:100%;display:flex;flex-direction:column}
+    label{font-size:13px;color:var(--muted);display:block;margin-bottom:6px;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif}
+    select,input[type=checkbox]{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+    .preset{display:flex;gap:8px;margin-top:10px}
+    .status{margin-top:12px;color:var(--muted);font-size:13px;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif}
+    .preview{margin-top:12px;flex:1;overflow:auto;padding:8px;background:#071226;border-radius:8px}
+    pre{white-space:pre-wrap;font-size:13px;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif}
+    footer{margin-top:12px;text-align:right;color:var(--muted);font-size:13px;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif}
+    .small{font-size:12px;color:var(--muted);font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif}
+    @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>Advanced Document Converter</h1>
+        <p class="lead">Drag and drop files, or select files. Convert common documents (PDF, DOCX, TXT, MD, Images). Results are generated on the client side.</p>
+      </div>
+    </header>
+
+    <div class="grid">
+      <div>
+        <div id="drop" class="drop" tabindex="0">
+          <div class="hint">Drag and drop files here, or click to select. Supports multiple files at once.</div>
+          <input id="fileInput" type="file" multiple style="display:none" />
+          <div class="files" id="filesList" aria-live="polite"></div>
+          <div class="controls">
+            <button id="btnAdd" type="button">Select File</button>
+            <button id="btnClear" type="button" class="ghost">Start Over</button>
+            <button id="btnConvert" type="button">Convert All</button>
+          </div>
+          <div class="status" id="status">Status: Ready</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel">
+          <label for="formatSelect">Select Output Format</label>
+          <select id="formatSelect">
+            <option value="pdf">PDF</option>
+            <option value="txt">TXT (plain text)</option>
+            <option value="md">Markdown</option>
+            <option value="html">HTML</option>
+          </select>
+
+          <div class="preset">
+            <label style="flex:1"><input type="checkbox" id="optSeparate"> Separate files for each output</label>
+            <label style="flex:1"><input type="checkbox" id="optPreserveNames" checked> Keep the file name</label>
+          </div>
+
+          <div class="status small">
+            Supported conversions (client-side):
+            <ul style="margin:6px 0 0 18px">
+              <li>DOCX → HTML / TXT / PDF (via mammoth + html2pdf)</li>
+              <li>PDF → TXT (via pdf.js) / PDF unchanged</li>
+              <li>Image (PNG/JPG) → PDF</li>
+              <li>TXT / MD / HTML → PDF / TXT / MD / HTML</li>
+            </ul>
+          </div>
+
+          <div class="preview" id="preview">
+            <strong>Preview / Log</strong>
+            <pre id="log">No Actions</pre>
+          </div>
+
+          <footer>Note: Some complex formats (advanced PPTX, .pages, files with DRM) are not fully compatible with the client-side.</footer>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ini untuk libraries nya, don't touch if this works -->
+    <script src="https://cdn.jsdelivr.net/npm/mammoth@1.4.21/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.8.162/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
+
+    <script>
+      // kasih pake single scrip aja biar ringkas
+      const dropEl = document.getElementById('drop');
+      const inputEl = document.getElementById('fileInput');
+      const filesListEl = document.getElementById('filesList');
+      const logEl = document.getElementById('log');
+      const statusEl = document.getElementById('status');
+      const formatSelectEl = document.getElementById('formatSelect');
+      const btnAdd = document.getElementById('btnAdd');
+      const btnClear = document.getElementById('btnClear');
+      const btnConvert = document.getElementById('btnConvert');
+
+      let filesArr = [];
+
+      function addLog(...parts){
+        const msg = parts.map(p=> typeof p === 'string' ? p : JSON.stringify(p)).join(' ');
+        logEl.textContent = msg + "\n" + logEl.textContent;
+        console.log(msg);
+      }
+      function setStatus(t){ statusEl.textContent = 'Status: ' + t; }
+
+      function renderFiles(){
+        filesListEl.innerHTML = '';
+        filesArr.forEach((f,i)=>{
+          const item = document.createElement('div');
+          item.className = 'file-item';
+          item.innerHTML = `\n            <div>\n              <strong>${escapeHtml(f.name)}</strong><br>\n              <small>${Math.round(f.size/1024)} KB • ${f.type || 'unknown'}</small>\n            </div>\n            <div>\n              <button type=\"button\" class=\"ghost\" data-index=\"${i}\">Hapus</button>\n            </div>\n          `;
+          filesListEl.appendChild(item);
+        });
+      }
+
+      // Ini func untuk supaya gak ke double dia punya file nya (JANGAN DIHAPUS)
+      function pushFiles(list){
+        for(const f of list){
+          const key = f.name + '::' + f.size;
+          if(!filesArr.some(x=> x.name + '::' + x.size === key)) filesArr.push(f);
+        }
+        renderFiles();
+      }
+
+      // Events
+      dropEl.addEventListener('click', ()=> inputEl.click());
+      btnAdd.addEventListener('click', ()=> inputEl.click());
+      inputEl.addEventListener('change', e=>{
+        if(e.target.files && e.target.files.length) pushFiles(e.target.files);
+        inputEl.value = '';
+        setStatus(filesArr.length + ' file siap');
+      });
+
+      filesListEl.addEventListener('click', e=>{
+        const idx = e.target.dataset.index;
+        if(typeof idx !== 'undefined'){
+          filesArr.splice(parseInt(idx),1);
+          renderFiles();
+          setStatus(filesArr.length + ' file tersisa');
+        }
+      });
+
+      ['dragenter','dragover'].forEach(ev=> dropEl.addEventListener(ev, e=>{ e.preventDefault(); dropEl.classList.add('dragover'); }));
+      ['dragleave','drop'].forEach(ev=> dropEl.addEventListener(ev, e=>{ e.preventDefault(); dropEl.classList.remove('dragover'); }));
+      dropEl.addEventListener('drop', e=>{
+        const dt = e.dataTransfer;
+        if(dt && dt.files && dt.files.length) pushFiles(dt.files);
+        setStatus(filesArr.length + ' file siap');
+      });
+
+      btnClear.addEventListener('click', ()=>{ filesArr = []; renderFiles(); setStatus('Dikosongkan'); addLog('List dibersihkan'); });
+      btnConvert.addEventListener('click', ()=>{ if(!filesArr.length) return setStatus('Tidak ada file'); convertAll(); });
+
+      // Conversion pipeline
+      async function convertAll(){
+        setStatus('Memulai konversi...');
+        const out = formatSelectEl.value;
+        for(const f of filesArr){
+          addLog('Mengonversi:', f.name);
+          try{ await convertFileTo(f, out); }
+          catch(err){ addLog('Gagal konversi', f.name, err.message || err); }
+        }
+        setStatus('Selesai');
+      }
+
+      // Helper BUAT conversions
+      function escapeHtml(str){ return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+      async function convertFileTo(file, outFormat){
+        const base = file.name.replace(/\.[^/.]+$/, '');
+        const ext = (file.name.split('.').pop() || '').toLowerCase();
+
+        // DOCX → HTML/TXT/MD/PDF via mammoth + html2pdf
+        if(ext === 'docx'){
+          const ab = await file.arrayBuffer();
+          const result = await mammoth.convertToHtml({arrayBuffer: ab});
+          const html = result.value || '';
+          const text = stripHtml(html);
+          if(outFormat === 'txt') return downloadText(text, base + '.txt');
+          if(outFormat === 'md')  return downloadText(htmlToMarkdown(html), base + '.md');
+          if(outFormat === 'html') return downloadText(html, base + '.html');
+          if(outFormat === 'pdf')  return htmlToPdfAndDownload(html, base + '.pdf');
+        }
+
+        // PDF input → TXT or download unchanged
+        if(ext === 'pdf'){
+          if(outFormat === 'pdf') return downloadBlob(file, file.name);
+          if(outFormat === 'txt'){
+            const txt = await pdfToText(await file.arrayBuffer());
+            return downloadText(txt, base + '.txt');
+          }
+          return downloadBlob(file, file.name);
+        }
+
+        // Images to PDF
+        if(['png','jpg','jpeg','webp'].includes(ext)){
+          if(outFormat === 'pdf') return imageToPdfAndDownload(file, base + '.pdf');
+          return downloadBlob(file, file.name);
+        }
+
+        // Text-like files
+        if(['txt','md','html','htm'].includes(ext)){
+          const raw = await file.text();
+          if(outFormat === 'txt') return downloadText(raw, base + '.txt');
+          if(outFormat === 'md')  return downloadText(raw, base + '.md');
+          if(outFormat === 'html') return downloadText(raw, base + '.html');
+          if(outFormat === 'pdf')  return htmlToPdfAndDownload('<pre>' + escapeHtml(raw) + '</pre>', base + '.pdf');
+        }
+
+        // Fallback: ini kalau gak didukung langsung kita suruh DL file ori nya
+        addLog('Format tidak didukung di client-side:', file.name);
+        return downloadBlob(file, file.name);
+      }
+
+      // Utility: download blob
+      function downloadBlob(blobOrFile, filename){
+        const blob = blobOrFile instanceof Blob ? blobOrFile : new Blob([blobOrFile]);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(()=> URL.revokeObjectURL(url), 3000);
+      }
+      function downloadText(text, filename){ downloadBlob(new Blob([text], {type: 'text/plain'}), filename); }
+
+      // html to pdf
+      async function htmlToPdfAndDownload(html, filename){
+        const container = document.createElement('div');
+        container.style.padding = '12px';
+        container.style.background = 'white';
+        container.style.color = 'black';
+        container.innerHTML = html;
+        document.body.appendChild(container);
+        try{
+          await html2pdf().from(container).set({filename, html2canvas: {scale:2}}).save();
+        }finally{ container.remove(); }
+      }
+
+      // image ot pdf using pdf-lib
+      async function imageToPdfAndDownload(file, filename){
+        const ab = await file.arrayBuffer();
+        const pdfDoc = await PDFLib.PDFDocument.create();
+        const ext = (file.name.split('.').pop()||'').toLowerCase();
+        let img;
+        if(ext === 'png') img = await pdfDoc.embedPng(ab);
+        else img = await pdfDoc.embedJpg(ab);
+        const page = pdfDoc.addPage([img.width, img.height]);
+        page.drawImage(img, {x:0,y:0,width:img.width,height:img.height});
+        const pdfBytes = await pdfDoc.save();
+        downloadBlob(new Blob([pdfBytes], {type:'application/pdf'}), filename);
+      }
+
+      // pdf to text using pdf.js
+      async function pdfToText(arrayBuffer){
+        if(typeof pdfjsLib === 'undefined') throw new Error('pdfjsLib not loaded');
+        const loadingTask = pdfjsLib.getDocument({data: arrayBuffer});
+        const pdf = await loadingTask.promise;
+        let out = '';
+        for(let i=1;i<=pdf.numPages;i++){
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const pageText = content.items.map(it=>it.str).join(' ');
+          out += `--- Page ${i} ---\n${pageText}\n\n`;
+        }
+        return out;
+      }
+
+      function stripHtml(html){ const tmp = document.createElement('div'); tmp.innerHTML = html; return tmp.textContent || tmp.innerText || ''; }
+
+      function htmlToMarkdown(html){
+        let t = html.replace(/<h1[^>]*>(.*?)<\/h1>/gi,'# $1\n');
+        t = t.replace(/<h2[^>]*>(.*?)<\/h2>/gi,'## $1\n');
+        t = t.replace(/<p[^>]*>(.*?)<\/p>/gi,'$1\n');
+        t = t.replace(/<strong[^>]*>(.*?)<\/strong>/gi,'**$1**');
+        t = t.replace(/<em[^>]*>(.*?)<\/em>/gi,'*$1*');
+        t = t.replace(/<a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi,'[$2]($1)');
+        t = t.replace(/<[^>]+>/g,'');
+        return t;
+      }
+
+      addLog('Ready — converter (client-side) loaded');
+    </script>
+  </div>
+</body>
+</html>
